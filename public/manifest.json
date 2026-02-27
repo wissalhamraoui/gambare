@@ -19,14 +19,6 @@
   "launch_handler": {
     "client_mode": ["focus-existing", "auto"]
   },
-  "scope_extensions": [
-    {
-      "origin": "https://gambare-six.vercel.app"
-    },
-    {
-      "origin": "https://vercel.app"
-    }
-  ],
   "file_handlers": [
     {
       "action": "/",
@@ -64,11 +56,7 @@
         }
       ],
       "tag": "gambare-flashcard-widget",
-      "template": "flashcard",
-      "data": {
-        "word": "こんにちは",
-        "meaning": "Hello"
-      }
+      "template": "flashcard"
     }
   ],
   "edge_side_panel": {

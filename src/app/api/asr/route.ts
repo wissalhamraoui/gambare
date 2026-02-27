@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ZAI from 'z-ai-web-dev-sdk';
+import { ensureConfigFile } from '@/lib/ai-config';
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,12 +11,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Audio file is required' }, { status: 400 });
     }
 
+    // Ensure config file exists
+    ensureConfigFile();
+
     // Convert audio file to base64
     const arrayBuffer = await audioFile.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const base64Audio = buffer.toString('base64');
 
-    const zai = await ZAI.create();
+    let zai;
+    try {
+      zai = await ZAI.create();
+    } catch (sdkInitError: unknown) {
+      const err = sdkInitError as Error;
+      console.error('[ASR API] SDK initialization failed:', err?.message);
+      return NextResponse.json({ 
+        error: 'Speech recognition service unavailable. Please check server configuration.' 
+      }, { status: 503 });
+    }
 
     // Transcribe audio
     const response = await zai.audio.asr.create({

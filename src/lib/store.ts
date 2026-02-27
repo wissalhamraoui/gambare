@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 interface UserProgress {
   xp: number;
@@ -15,6 +15,8 @@ interface UserProgress {
 
 interface GamificationState {
   progress: UserProgress;
+  _hasHydrated: boolean;
+  setHasHydrated: (state: boolean) => void;
   addXP: (amount: number) => void;
   loseHeart: () => void;
   restoreHearts: () => void;
@@ -63,6 +65,11 @@ export const useGamificationStore = create<GamificationState>()(
   persist(
     (set, get) => ({
       progress: initialState,
+      _hasHydrated: false,
+      
+      setHasHydrated: (state: boolean) => {
+        set({ _hasHydrated: state });
+      },
       
       addXP: (amount: number) => {
         set((state) => {
@@ -190,6 +197,10 @@ export const useGamificationStore = create<GamificationState>()(
     }),
     {
       name: 'gambare-progress',
+      storage: createJSONStorage(() => localStorage),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

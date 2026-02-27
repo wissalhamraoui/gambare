@@ -12,12 +12,14 @@ import { useGamificationStore } from '@/lib/store';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('home');
-  const { checkDailyStreak, progress } = useGamificationStore();
+  const { checkDailyStreak, progress, _hasHydrated } = useGamificationStore();
 
   // Check daily streak on mount
   useEffect(() => {
-    checkDailyStreak();
-  }, [checkDailyStreak]);
+    if (_hasHydrated) {
+      checkDailyStreak();
+    }
+  }, [checkDailyStreak, _hasHydrated]);
 
   const handleNavigate = (tab: string) => {
     setActiveTab(tab);
@@ -43,7 +45,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-background">
       {/* Progress Header - shown on all tabs except home */}
-      {activeTab !== 'home' && (
+      {activeTab !== 'home' && _hasHydrated && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}

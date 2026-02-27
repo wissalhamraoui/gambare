@@ -41,7 +41,8 @@ yarn-error.log*
 next-env.d.ts
 local-*
 .claude
-.z-ai-config
+# .z-ai-config - uncomment to ignore, or commit to include the config
+# .z-ai-config
 dev.log
 test
 prompt

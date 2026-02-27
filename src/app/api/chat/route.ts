@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ZAI, { ChatMessage } from 'z-ai-web-dev-sdk';
+import { ensureConfigFile, getAIConfig } from '@/lib/ai-config';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,8 +17,25 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
+    // Ensure config file exists (writes from env vars if set)
+    ensureConfigFile();
+    
+    // Get config for logging
+    const config = getAIConfig();
+    console.log('[Chat API] Using baseUrl:', config.baseUrl);
+
     // Create AI client
-    const zai = await ZAI.create();
+    let zai;
+    try {
+      zai = await ZAI.create();
+    } catch (sdkInitError: unknown) {
+      const err = sdkInitError as Error;
+      console.error('[Chat API] SDK initialization failed:', err?.message);
+      return NextResponse.json({ 
+        success: false, 
+        error: 'AI service unavailable. Please check server configuration.' 
+      }, { status: 503 });
+    }
 
     // Build system prompt - NOTE: Use 'assistant' role for system prompts with this SDK!
     const systemPrompt = `You are Gambare (がんばれ), a friendly Japanese language tutor.
@@ -79,9 +97,19 @@ Rules:
     const err = error as Error;
     console.error('[Chat API] Error:', err?.message || err);
     
+    // Provide user-friendly error message
+    let errorMessage = err?.message || 'Unknown error occurred';
+    
+    // Mask technical details for production
+    if (errorMessage.includes('fetch failed') || errorMessage.includes('ECONNREFUSED')) {
+      errorMessage = 'AI service is currently unavailable. Please try again later.';
+    } else if (errorMessage.includes('Configuration file')) {
+      errorMessage = 'AI service is not properly configured. Please contact support.';
+    }
+    
     return NextResponse.json({ 
       success: false, 
-      error: err?.message || 'Unknown error occurred' 
+      error: errorMessage 
     }, { status: 500 });
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ZAI from 'z-ai-web-dev-sdk';
+import { ensureConfigFile } from '@/lib/ai-config';
 
 // Available voices with their characteristics
 const VOICE_OPTIONS = {
@@ -25,6 +26,9 @@ export async function POST(req: NextRequest) {
     if (!text || text.trim().length === 0) {
       return NextResponse.json({ error: 'Text is required' }, { status: 400 });
     }
+
+    // Ensure config file exists
+    ensureConfigFile();
 
     // Clean and prepare text for better TTS
     let processedText = text
@@ -52,7 +56,16 @@ export async function POST(req: NextRequest) {
     // Limit text length to 1024 characters (API limit)
     const truncatedText = processedText.slice(0, 1000);
 
-    const zai = await ZAI.create();
+    let zai;
+    try {
+      zai = await ZAI.create();
+    } catch (sdkInitError: unknown) {
+      const err = sdkInitError as Error;
+      console.error('[TTS API] SDK initialization failed:', err?.message);
+      return NextResponse.json({ 
+        error: 'TTS service unavailable. Please check server configuration.' 
+      }, { status: 503 });
+    }
 
     // Select voice
     const selectedVoice = VOICE_OPTIONS[voice as keyof typeof VOICE_OPTIONS]?.voice || 'douji';
