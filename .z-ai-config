@@ -1,1 +1,1 @@
-{"baseUrl": "http://172.25.136.193:8080/v1", "apiKey": "Z.ai"}
+{"baseUrl": "https://api.openai.com/v1", "apiKey": "YOUR_OPENAI_API_KEY_HERE"}
