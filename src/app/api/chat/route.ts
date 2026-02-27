@@ -1,68 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
+import ZAI, { ChatMessage } from 'z-ai-web-dev-sdk';
 
-// Disable body parsing for edge runtime
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    // Parse request body
-    let body;
-    try {
-      body = await req.json();
-    } catch (parseError) {
-      console.error('Failed to parse request body:', parseError);
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Invalid JSON in request body' 
-      }, { status: 400 });
-    }
-
+    const body = await req.json();
     const { message, history, scenario, level = 'beginner' } = body;
 
-    if (!message || typeof message !== 'string') {
+    if (!message) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Message is required and must be a string' 
+        error: 'Message is required' 
       }, { status: 400 });
     }
 
-    // Import AI SDK
-    let zai;
-    try {
-      const ZAI = (await import('z-ai-web-dev-sdk')).default;
-      zai = await ZAI.create();
-    } catch (sdkError) {
-      console.error('Failed to initialize AI SDK:', sdkError);
-      return NextResponse.json({ 
-        success: false, 
-        error: 'AI service temporarily unavailable. Please try again later.' 
-      }, { status: 503 });
-    }
+    // Create AI client
+    const zai = await ZAI.create();
 
-    // Build system prompt
-    const systemPrompt = `You are Gambare (がんばれ), a friendly Japanese language tutor. Your role is to help students learn Japanese through natural conversation.
+    // Build system prompt - NOTE: Use 'assistant' role for system prompts with this SDK!
+    const systemPrompt = `You are Gambare (がんばれ), a friendly Japanese language tutor.
 
 Student level: ${level}
 Topic: ${scenario || 'General conversation'}
 
-Guidelines:
-1. Always respond in Japanese first, then add romaji in parentheses, then English translation
-2. Be encouraging, patient, and use emojis occasionally
-3. Keep responses concise but helpful
-4. Ask follow-up questions to continue the conversation
-5. For beginners, use simple vocabulary and provide translations`;
+Rules:
+- Respond in Japanese first
+- Add romaji in parentheses for key phrases
+- Provide English translation
+- Be encouraging and use emojis
+- Keep responses short and helpful`;
 
-    // Build messages array
-    const messages: Array<{ role: string; content: string }> = [
-      { role: 'system', content: systemPrompt }
+    // Build messages with proper typing
+    // IMPORTANT: Use 'assistant' role for system prompt per SDK documentation
+    const messages: ChatMessage[] = [
+      { role: 'assistant', content: systemPrompt }
     ];
 
-    // Add history if provided
-    if (history && Array.isArray(history)) {
+    // Add history
+    if (Array.isArray(history)) {
       for (const msg of history) {
-        if (msg && typeof msg.role === 'string' && typeof msg.content === 'string') {
-          messages.push({ role: msg.role, content: msg.content });
+        if (msg?.role === 'user' || msg?.role === 'assistant') {
+          messages.push({ role: msg.role, content: String(msg.content) });
         }
       }
     }
@@ -70,45 +50,38 @@ Guidelines:
     // Add current message
     messages.push({ role: 'user', content: message });
 
-    console.log('[Chat API] Sending request to AI with', messages.length, 'messages');
+    console.log('[Chat API] Calling AI with', messages.length, 'messages');
 
-    // Call AI
-    let completion;
-    try {
-      completion = await zai.chat.completions.create({
-        messages: messages as any,
-      });
-    } catch (aiError: any) {
-      console.error('AI completion error:', aiError);
+    // Call AI with proper options
+    const response = await zai.chat.completions.create({
+      messages,
+      thinking: { type: 'disabled' }
+    });
+
+    const reply = response.choices?.[0]?.message?.content;
+
+    if (!reply) {
+      console.error('[Chat API] No reply in response');
       return NextResponse.json({ 
         success: false, 
-        error: 'AI request failed: ' + (aiError.message || 'Unknown error')
+        error: 'No response from AI' 
       }, { status: 500 });
     }
 
-    const response = completion?.choices?.[0]?.message?.content;
-
-    if (!response) {
-      console.error('No response from AI');
-      return NextResponse.json({ 
-        success: false, 
-        error: 'No response received from AI' 
-      }, { status: 500 });
-    }
-
-    console.log('[Chat API] Got response:', response.substring(0, 100) + '...');
+    console.log('[Chat API] Success:', reply.substring(0, 50) + '...');
 
     return NextResponse.json({ 
       success: true, 
-      response,
-      timestamp: new Date().toISOString()
+      response: reply 
     });
 
-  } catch (error: any) {
-    console.error('[Chat API] Unexpected error:', error);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('[Chat API] Error:', err?.message || err);
+    
     return NextResponse.json({ 
       success: false, 
-      error: 'An unexpected error occurred: ' + (error?.message || 'Unknown error')
+      error: err?.message || 'Unknown error occurred' 
     }, { status: 500 });
   }
 }

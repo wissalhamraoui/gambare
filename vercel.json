@@ -1,0 +1,26 @@
+{
+  "functions": {
+    "src/app/api/chat/route.ts": {
+      "memory": 1024,
+      "maxDuration": 30
+    },
+    "src/app/api/tts/route.ts": {
+      "memory": 1024,
+      "maxDuration": 30
+    },
+    "src/app/api/asr/route.ts": {
+      "memory": 1024,
+      "maxDuration": 30
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/:path*",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type" }
+      ]
+    }
+  ]
+}
