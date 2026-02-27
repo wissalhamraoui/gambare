@@ -1,0 +1,187 @@
+{
+  "id": "gambare-japanese-learning-app",
+  "name": "Gambare - Learn Japanese",
+  "short_name": "Gambare",
+  "description": "A cute and motivational Japanese language learning app powered by AI. Practice conversations, voice, flashcards, and quizzes!",
+  "start_url": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "tabbed", "standalone", "browser"],
+  "background_color": "#FFF9F0",
+  "theme_color": "#FFB6C1",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["education", "productivity"],
+  "prefer_related_applications": false,
+  "iarc_rating_id": "e84b0729-0e7e-4e2e-8a6e-7d8e9f0a1b2c",
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": ["focus-existing", "auto"]
+  },
+  "scope_extensions": [
+    {
+      "origin": "https://gambare-six.vercel.app"
+    },
+    {
+      "origin": "https://vercel.app"
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "/",
+      "accept": {
+        "text/plain": [".txt"],
+        "application/json": [".json"],
+        "text/vtt": [".vtt"]
+      }
+    }
+  ],
+  "protocol_handlers": [
+    {
+      "protocol": "web+gambare",
+      "url": "/?action=%s"
+    }
+  ],
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "widgets": [
+    {
+      "name": "Gambare Flashcard",
+      "short_name": "Flashcard",
+      "description": "Practice Japanese vocabulary",
+      "icons": [
+        {
+          "src": "/icons/icon-192x192.png",
+          "sizes": "192x192"
+        }
+      ],
+      "tag": "gambare-flashcard-widget",
+      "template": "flashcard",
+      "data": {
+        "word": "こんにちは",
+        "meaning": "Hello"
+      }
+    }
+  ],
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "note_taking": {
+    "new_note_url": "/?tab=tutor&action=new-note"
+  },
+  "shortcuts": [
+    {
+      "name": "Flashcards",
+      "short_name": "Flashcards",
+      "description": "Practice Japanese vocabulary with flashcards",
+      "url": "/?tab=flashcards",
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Quiz",
+      "short_name": "Quiz",
+      "description": "Test your Japanese knowledge",
+      "url": "/?tab=quiz",
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "AI Tutor",
+      "short_name": "Tutor",
+      "description": "Practice conversations with AI tutor",
+      "url": "/?tab=tutor",
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/home-narrow.png",
+      "sizes": "768x1344",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Home Screen - Mobile"
+    },
+    {
+      "src": "/screenshots/home-wide.png",
+      "sizes": "1344x768",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Home Screen - Desktop"
+    }
+  ],
+  "related_applications": [
+    {
+      "platform": "webapp",
+      "url": "https://gambare-six.vercel.app/manifest.json"
+    }
+  ],
+  "icons": [
+    {
+      "src": "/icons/icon-72x72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-128x128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-144x144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-152x152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-384x384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
