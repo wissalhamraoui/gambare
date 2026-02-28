@@ -1,540 +1,319 @@
-'use client';
+﻿'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useGamificationStore } from '@/lib/store';
-import { playCallRing, playCallConnect, playCallEnd, playTap, playSuccess } from '@/lib/sounds';
-
-interface Message {
-  id: string;
-  speaker: 'tutor' | 'student';
-  text: string;
-  japanese?: string;
-  timestamp: Date;
-}
-
-type LessonTopic = 'greetings' | 'numbers' | 'food' | 'travel' | 'daily' | 'business';
-
-const lessonTopics: { id: LessonTopic; title: string; titleJp: string; icon: string; description: string }[] = [
-  { id: 'greetings', title: 'Greetings', titleJp: '挨拶', icon: '👋', description: 'Basic greetings and introductions' },
-  { id: 'numbers', title: 'Numbers', titleJp: '数字', icon: '🔢', description: 'Counting and numbers' },
-  { id: 'food', title: 'Food & Dining', titleJp: '食べ物', icon: '🍱', description: 'Ordering food and restaurants' },
-  { id: 'travel', title: 'Travel', titleJp: '旅行', icon: '✈️', description: 'Directions and travel phrases' },
-  { id: 'daily', title: 'Daily Life', titleJp: '日常', icon: '🏠', description: 'Everyday conversations' },
-  { id: 'business', title: 'Business', titleJp: 'ビジネス', icon: '💼', description: 'Work and formal Japanese' },
-];
 
 export default function TutorTab() {
-  const [callState, setCallState] = useState<'idle' | 'ringing' | 'connected' | 'ended'>('idle');
-  const [selectedTopic, setSelectedTopic] = useState<LessonTopic | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [isCallActive, setIsCallActive] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [isTutorSpeaking, setIsTutorSpeaking] = useState(false);
-  const [callDuration, setCallDuration] = useState(0);
-  const [showTranscript, setShowTranscript] = useState(true);
-  
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [conversation, setConversation] = useState<{q: string, a: string}[]>([]);
+  const [status, setStatus] = useState('Tap Start to begin');
+  const [currentLevel, setCurrentLevel] = useState('beginner');
+  const [textInput, setTextInput] = useState('');
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(true);
   const recognitionRef = useRef<any>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const callTimerRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const { addXP, completeConversation } = useGamificationStore();
+  const finalTranscriptRef = useRef('');
+  const { completeConversation, completeVoicePhrase } = useGamificationStore();
 
-  // Format call duration
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  const levels = [
+    { id: 'beginner', name: 'Beginner', icon: '🌱' },
+    { id: 'intermediate', name: 'Intermediate', icon: '🌿' },
+    { id: 'advanced', name: 'Advanced', icon: '🌳' },
+  ];
 
-  // Start call timer
-  useEffect(() => {
-    if (callState === 'connected') {
-      callTimerRef.current = setInterval(() => {
-        setCallDuration(prev => prev + 1);
-      }, 1000);
-    } else {
-      if (callTimerRef.current) {
-        clearInterval(callTimerRef.current);
-      }
+  const speakText = useCallback((text: string, onEnd?: () => void) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const japaneseRegex = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+/g;
+      const japaneseMatches = text.match(japaneseRegex);
+      const textToSpeak = japaneseMatches ? japaneseMatches.join(' ') : text;
+      
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      utterance.lang = 'ja-JP';
+      utterance.rate = 0.85;
+      
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => {
+        setIsSpeaking(false);
+        onEnd?.();
+      };
+      utterance.onerror = () => setIsSpeaking(false);
+      
+      window.speechSynthesis.speak(utterance);
     }
-    return () => {
-      if (callTimerRef.current) {
-        clearInterval(callTimerRef.current);
-      }
-    };
-  }, [callState]);
+  }, []);
 
-  // Speech recognition setup
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        recognitionRef.current = new SpeechRecognition();
-        recognitionRef.current.continuous = false;
-        recognitionRef.current.interimResults = false;
-        recognitionRef.current.lang = 'ja-JP';
-
-        recognitionRef.current.onresult = async (event: any) => {
-          const transcript = event.results[0][0].transcript;
-          setIsListening(false);
-          
-          // Add student message
-          const studentMessage: Message = {
-            id: Date.now().toString(),
-            speaker: 'student',
-            text: transcript,
-            timestamp: new Date(),
-          };
-          setMessages(prev => [...prev, studentMessage]);
-          
-          // Get tutor response
-          await getTutorResponse(transcript);
-        };
-
-        recognitionRef.current.onerror = () => {
-          setIsListening(false);
-        };
-
-        recognitionRef.current.onend = () => {
-          setIsListening(false);
-        };
-      }
-    }
-  }, [selectedTopic]);
-
-  // Start listening
-  const startListening = useCallback(() => {
-    if (recognitionRef.current && callState === 'connected') {
-      setIsListening(true);
-      recognitionRef.current.start();
-      playTap();
-    }
-  }, [callState]);
-
-  // Get tutor response from API
-  const getTutorResponse = async (studentText: string) => {
-    setIsTutorSpeaking(true);
+  const getAIResponse = useCallback(async (userMessage: string) => {
+    if (!userMessage.trim()) return;
+    
+    setStatus('🤔 Thinking...');
     
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: studentText,
-          history: messages.map(m => ({
-            role: m.speaker === 'student' ? 'user' as const : 'assistant' as const,
-            content: m.text
-          })),
-          scenario: lessonTopics.find(t => t.id === selectedTopic)?.title,
-          level: 'beginner',
-          mode: 'tutor' // Special mode for tutor calls
-        }),
+          message: userMessage,
+          history: [],
+          scenario: 'tutor_session',
+          level: currentLevel
+        })
       });
 
       const data = await response.json();
 
-      if (data.success) {
-        // Add tutor message
-        const tutorMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          speaker: 'tutor',
-          text: data.response,
-          timestamp: new Date(),
-        };
-        setMessages(prev => [...prev, tutorMessage]);
+      if (data.success && data.response) {
+        setConversation(prev => [...prev, { q: userMessage, a: data.response }]);
+        completeConversation();
+        completeVoicePhrase();
         
-        // Speak the response
-        await speakText(data.response);
+        setStatus('🗣️ Speaking...');
+        speakText(data.response, () => {
+          setStatus('🎤 Your turn!');
+        });
+      } else {
+        setStatus('Error: ' + (data.error || 'Unknown'));
       }
     } catch (error) {
-      console.error('Tutor response error:', error);
-    } finally {
-      setIsTutorSpeaking(false);
+      setStatus('Network error!');
     }
-  };
+  }, [currentLevel, completeConversation, completeVoicePhrase, speakText]);
 
-  // Text to speech
-  const speakText = async (text: string) => {
-    setIsTutorSpeaking(true);
-    try {
-      const response = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          text, 
-          speed: 0.85,
-          voice: 'douji'
-        }),
-      });
-
-      if (!response.ok) throw new Error('TTS failed');
-
-      const audioBlob = await response.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
-      
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      
-      audioRef.current = new Audio(audioUrl);
-      audioRef.current.onended = () => {
-        setIsTutorSpeaking(false);
-        URL.revokeObjectURL(audioUrl);
-      };
-      
-      await audioRef.current.play();
-    } catch (error) {
-      console.error('TTS error:', error);
-      setIsTutorSpeaking(false);
+  const stopListening = useCallback(() => {
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch(e) {}
     }
-  };
-
-  // Start a call
-  const startCall = (topic: LessonTopic) => {
-    setSelectedTopic(topic);
-    setCallState('ringing');
-    playCallRing();
-    
-    // Simulate connection after 2 seconds
-    setTimeout(() => {
-      setCallState('connected');
-      playCallConnect();
-      
-      // Initial greeting
-      const greeting: Message = {
-        id: Date.now().toString(),
-        speaker: 'tutor',
-        text: `こんにちは！Today we'll practice ${lessonTopics.find(t => t.id === topic)?.title}. Let's start! 何か話しかけてください。`,
-        timestamp: new Date(),
-      };
-      setMessages([greeting]);
-      
-      // Speak greeting
-      setTimeout(() => speakText(greeting.text), 500);
-    }, 2000);
-  };
-
-  // End call
-  const endCall = () => {
-    playCallEnd();
-    setCallState('ended');
-    
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    
-    // Award XP
-    const xpEarned = Math.min(callDuration * 2, 50); // Max 50 XP
-    addXP(xpEarned);
-    completeConversation();
-    playSuccess();
-  };
-
-  // Reset to idle
-  const resetCall = () => {
-    setCallState('idle');
-    setSelectedTopic(null);
-    setMessages([]);
-    setCallDuration(0);
     setIsListening(false);
-    setIsTutorSpeaking(false);
-    playTap();
+  }, []);
+
+  const startListening = useCallback(() => {
+    if (!recognitionRef.current || isSpeaking) return;
+    
+    finalTranscriptRef.current = '';
+    
+    try {
+      setIsListening(true);
+      setStatus('🎧 Listening... Speak now!');
+      recognitionRef.current.start();
+    } catch (e: any) {
+      if (e.message?.includes('already started')) {
+        stopListening();
+        setTimeout(startListening, 100);
+      } else {
+        setStatus('Mic error - use text input');
+        setShowTextInput(true);
+        setIsListening(false);
+      }
+    }
+  }, [isSpeaking, stopListening]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      setSpeechSupported(false);
+      setShowTextInput(true);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'ja-JP';
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setStatus(`You: "${transcript}"`);
+      stopListening();
+      getAIResponse(transcript);
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech error:', event.error);
+      stopListening();
+      if (event.error === 'not-allowed') {
+        setStatus('Mic blocked - use text');
+        setShowTextInput(true);
+      } else if (event.error === 'no-speech') {
+        setStatus('No speech detected - try again');
+      } else {
+        setStatus('Error - use text input');
+        setShowTextInput(true);
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch(e) {}
+      }
+    };
+  }, [getAIResponse, stopListening]);
+
+  const sendTextMessage = () => {
+    if (textInput.trim()) {
+      getAIResponse(textInput.trim());
+      setTextInput('');
+    }
   };
 
-  // Idle state - Topic selection
-  if (callState === 'idle') {
+  const startCall = () => {
+    setIsCallActive(true);
+    setConversation([]);
+    setShowTextInput(false);
+    
+    const greeting = 'こんにちは！I am your Japanese teacher. Let us start learning! What is your name? お名前は何ですか？';
+    
+    setStatus('🗣️ Speaking...');
+    speakText(greeting, () => {
+      setStatus('🎤 Your turn! Click mic or type');
+    });
+  };
+
+  const endCall = () => {
+    setIsCallActive(false);
+    window.speechSynthesis.cancel();
+    stopListening();
+    setStatus('Tap Start to begin');
+    setConversation([]);
+  };
+
+  if (!isCallActive) {
     return (
-      <div className="min-h-screen pb-24 pt-4 bg-gradient-to-b from-[#FFF9F0] to-[#E8E4F0]">
-        <div className="px-4">
-          <motion.div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center mb-6"
-          >
-            <div className="text-5xl mb-3">👨‍🏫</div>
-            <h1 className="text-xl font-bold text-gray-700 mb-2">AI Tutor Call</h1>
-            <p className="text-gray-500 text-sm">Practice speaking Japanese with your tutor!</p>
-          </motion.div>
+      <div className="min-h-screen pt-20 pb-24 px-4 bg-gradient-to-b from-[#FFF9F0] to-[#FFE4E9]">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-6">
+          <div className="w-28 h-28 mx-auto rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-5xl mb-3 shadow-xl">
+            👨‍🏫
+          </div>
+          <h1 className="text-2xl font-bold text-gray-700">AI Voice Tutor</h1>
+          <p className="text-gray-500 text-sm mt-1">Practice Japanese with a teacher!</p>
+        </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl p-4 mb-5 border-2 border-indigo-100"
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">📞</span>
-              <div>
-                <p className="font-semibold text-indigo-700 text-sm">Voice Call Practice</p>
-                <p className="text-indigo-600 text-xs">Have a real conversation with your AI tutor!</p>
-              </div>
-            </div>
-          </motion.div>
-
-          <h2 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <span className="text-xl">📚</span> Choose a Topic
-          </h2>
-
-          <div className="grid grid-cols-2 gap-3">
-            {lessonTopics.map((topic, index) => (
-              <motion.button
-                key={topic.id}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.1 + index * 0.05 }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => { playTap(); startCall(topic.id); }}
-                className="gambare-card p-4 text-left hover:border-indigo-300 transition-colors"
+        <div className="gambare-card p-4 mb-4">
+          <h2 className="font-bold text-gray-700 mb-2">Level:</h2>
+          <div className="flex gap-2">
+            {levels.map((level) => (
+              <button
+                key={level.id}
+                onClick={() => setCurrentLevel(level.id)}
+                className={`flex-1 p-2 rounded-xl text-sm ${
+                  currentLevel === level.id
+                    ? 'bg-gradient-to-r from-indigo-400 to-purple-500 text-white'
+                    : 'bg-gray-100 text-gray-600'
+                }`}
               >
-                <span className="text-3xl mb-2 block">{topic.icon}</span>
-                <p className="font-bold text-gray-700">{topic.title}</p>
-                <p className="text-xs text-gray-400">{topic.titleJp}</p>
-                <p className="text-xs text-gray-500 mt-1">{topic.description}</p>
-              </motion.button>
+                {level.icon} {level.name}
+              </button>
             ))}
           </div>
         </div>
-      </div>
-    );
-  }
 
-  // Ringing state
-  if (callState === 'ringing') {
-    return (
-      <div className="min-h-screen pb-24 pt-4 bg-gradient-to-b from-indigo-500 to-purple-600 flex items-center justify-center">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-center text-white"
+        <div className="gambare-card p-4 mb-4">
+          <p className="text-sm text-gray-600">
+            {!speechSupported && '⚠️ Voice not supported - text only mode'}
+            {speechSupported && '🎤 Click mic to speak, or use text input'}
+          </p>
+        </div>
+
+        <motion.button
+          whileTap={{ scale: 0.95 }}
+          onClick={startCall}
+          className="w-full py-4 bg-gradient-to-r from-indigo-400 to-purple-500 text-white rounded-2xl font-bold text-lg shadow-lg"
         >
-          <motion.div
-            animate={{ scale: [1, 1.1, 1] }}
-            transition={{ repeat: Infinity, duration: 1.5 }}
-            className="w-32 h-32 mx-auto mb-6 rounded-full bg-white/20 flex items-center justify-center"
-          >
-            <span className="text-6xl">👨‍🏫</span>
-          </motion.div>
-          <h2 className="text-2xl font-bold mb-2">Calling Tutor...</h2>
-          <p className="text-white/80">{lessonTopics.find(t => t.id === selectedTopic)?.title} Lesson</p>
-          <motion.div 
-            animate={{ opacity: [0.5, 1, 0.5] }}
-            transition={{ repeat: Infinity, duration: 1 }}
-            className="mt-4 flex justify-center gap-2"
-          >
-            {[0, 1, 2].map(i => (
-              <motion.div
-                key={i}
-                animate={{ scale: [1, 1.3, 1] }}
-                transition={{ repeat: Infinity, delay: i * 0.2 }}
-                className="w-3 h-3 rounded-full bg-white"
-              />
-            ))}
-          </motion.div>
-        </motion.div>
+          📞 Start Lesson
+        </motion.button>
       </div>
     );
   }
 
-  // Ended state
-  if (callState === 'ended') {
-    const xpEarned = Math.min(callDuration * 2, 50);
-    return (
-      <div className="min-h-screen pb-24 pt-4 bg-gradient-to-b from-[#FFF9F0] to-[#D4EDDA] flex items-center justify-center">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-center px-4"
-        >
-          <div className="text-6xl mb-4">🎉</div>
-          <h2 className="text-2xl font-bold text-gray-700 mb-2">Great Session!</h2>
-          <p className="text-gray-500 mb-6">You practiced for {formatDuration(callDuration)}</p>
-          
-          <div className="gambare-card p-6 mb-6 max-w-xs mx-auto">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <span className="text-3xl">✨</span>
-              <span className="text-3xl font-bold text-indigo-500">+{xpEarned} XP</span>
-            </div>
-            <div className="grid grid-cols-2 gap-4 text-center">
-              <div>
-                <p className="text-2xl font-bold text-gray-700">{messages.filter(m => m.speaker === 'student').length}</p>
-                <p className="text-xs text-gray-500">You spoke</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-700">{formatDuration(callDuration)}</p>
-                <p className="text-xs text-gray-500">Duration</p>
-              </div>
-            </div>
-          </div>
-
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={resetCall}
-            className="w-full max-w-xs mx-auto py-4 rounded-2xl bg-gradient-to-r from-indigo-400 to-purple-500 text-white font-bold text-lg shadow-xl"
-          >
-            Start New Lesson 📚
-          </motion.button>
-        </motion.div>
-      </div>
-    );
-  }
-
-  // Connected state - Active call
   return (
-    <div className="min-h-screen bg-gradient-to-b from-indigo-500 to-purple-600 flex flex-col">
-      {/* Call Header */}
-      <div className="p-4 text-white">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <motion.div
-              animate={{ scale: [1, 1.05, 1] }}
-              transition={{ repeat: Infinity, duration: 2 }}
-              className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl"
-            >
-              👨‍🏫
-            </motion.div>
-            <div>
-              <p className="font-bold">Sensei Takahashi</p>
-              <p className="text-xs text-white/70">{lessonTopics.find(t => t.id === selectedTopic)?.title} Lesson</p>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="font-mono text-xl">{formatDuration(callDuration)}</p>
-            <div className="flex items-center gap-1 text-xs text-green-300">
-              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              Connected
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Video/Avatar Area */}
-      <div className="flex-1 flex items-center justify-center p-4">
-        <motion.div
-          animate={isTutorSpeaking ? { scale: [1, 1.05, 1] } : {}}
-          transition={{ repeat: isTutorSpeaking ? Infinity : 0, duration: 0.5 }}
-          className="relative"
+    <div className="min-h-screen pt-4 pb-32 px-4 bg-gradient-to-b from-indigo-50 to-purple-50">
+      <div className="text-center mb-3">
+        <motion.div 
+          animate={{ scale: isSpeaking ? [1, 1.05, 1] : 1 }}
+          transition={{ repeat: isSpeaking ? Infinity : 0, duration: 0.5 }}
+          className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-3xl shadow-xl mb-2"
         >
-          <div className="w-40 h-40 rounded-full bg-white/20 flex items-center justify-center">
-            <span className="text-7xl">👨‍🏫</span>
-          </div>
-          {isTutorSpeaking && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-white rounded-full px-3 py-1"
-            >
-              <div className="flex gap-0.5">
-                {[0, 1, 2, 3].map(i => (
-                  <motion.div
-                    key={i}
-                    animate={{ height: [8, 16, 8] }}
-                    transition={{ repeat: Infinity, delay: i * 0.1, duration: 0.3 }}
-                    className="w-1 bg-indigo-500 rounded-full"
-                  />
-                ))}
-              </div>
-            </motion.div>
-          )}
+          👨‍🏫
         </motion.div>
+        <p className="font-bold text-gray-700 text-sm">Sensei</p>
       </div>
 
-      {/* Transcript Toggle */}
-      <div className="px-4">
-        <button
-          onClick={() => setShowTranscript(!showTranscript)}
-          className="text-white/80 text-sm flex items-center gap-2 mx-auto"
-        >
-          {showTranscript ? '👇 Hide Transcript' : '👆 Show Transcript'}
-        </button>
+      <div className="bg-white rounded-xl p-2 mb-2 text-center shadow-sm">
+        <p className="text-gray-700 text-sm">{status}</p>
       </div>
 
-      {/* Transcript */}
-      <AnimatePresence>
-        {showTranscript && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="bg-white/10 backdrop-blur mx-4 rounded-2xl mb-4 overflow-hidden"
-          >
-            <div className="max-h-40 overflow-y-auto p-3 space-y-2">
-              {messages.slice(-6).map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`text-sm ${msg.speaker === 'student' ? 'text-right' : 'text-left'}`}
-                >
-                  <span className={`inline-block px-3 py-1 rounded-full ${
-                    msg.speaker === 'student' 
-                      ? 'bg-indigo-400 text-white' 
-                      : 'bg-white/20 text-white'
-                  }`}>
-                    {msg.text}
-                  </span>
-                </div>
-              ))}
+      <div className="max-h-[35vh] overflow-y-auto mb-2 space-y-2">
+        {conversation.slice(-4).map((item, index) => (
+          <div key={index} className="text-sm">
+            <div className="bg-indigo-100 rounded-lg p-2 mb-1">
+              <p className="text-indigo-600 font-medium text-xs">You:</p>
+              <p>{item.q}</p>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <div className="bg-white rounded-lg p-2 border">
+              <p className="text-purple-600 font-medium text-xs">Sensei:</p>
+              <p className="text-xs whitespace-pre-wrap">{item.a}</p>
+              <button onClick={() => speakText(item.a)} className="text-xs text-purple-400 mt-1">🔊</button>
+            </div>
+          </div>
+        ))}
+      </div>
 
-      {/* Controls */}
-      <div className="bg-white/10 backdrop-blur p-6 pb-8">
-        <div className="flex items-center justify-center gap-6">
-          {/* Microphone Button */}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={startListening}
-            disabled={isListening || isTutorSpeaking}
-            className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all ${
-              isListening 
-                ? 'bg-red-500 text-white animate-pulse' 
-                : isTutorSpeaking
-                ? 'bg-gray-300 text-gray-500'
-                : 'bg-white text-indigo-500'
-            }`}
-          >
-            {isListening ? (
-              <motion.div
-                animate={{ scale: [1, 1.2, 1] }}
-                transition={{ repeat: Infinity, duration: 0.5 }}
-              >
-                🎤
-              </motion.div>
-            ) : (
-              '🎤'
-            )}
-          </motion.button>
+      <div className="fixed bottom-20 left-0 right-0 px-4">
+        <div className="max-w-md mx-auto">
+          <div className="flex justify-center gap-3 mb-2">
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={isListening ? stopListening : startListening}
+              disabled={isSpeaking || !speechSupported}
+              className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl shadow-lg ${
+                isListening ? 'bg-red-500 text-white' :
+                isSpeaking ? 'bg-gray-300' :
+                speechSupported ? 'bg-gradient-to-r from-indigo-400 to-purple-500 text-white' : 'bg-gray-300'
+              }`}
+            >
+              {isListening ? '⏹️' : '🎤'}
+            </motion.button>
+            
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setShowTextInput(!showTextInput)}
+              className="w-14 h-14 rounded-full flex items-center justify-center text-2xl shadow-lg bg-white border-2 border-indigo-200"
+            >
+              ⌨️
+            </motion.button>
+          </div>
 
-          {/* End Call Button */}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={endCall}
-            className="w-16 h-16 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg"
-          >
-            📵
-          </motion.button>
+          <p className="text-center text-gray-400 text-xs mb-2">
+            {isListening ? '🎧 Speak now!' : '🎤 Voice | ⌨️ Type'}
+          </p>
 
-          {/* Speaker Button */}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => playTap()}
-            className="w-16 h-16 rounded-full bg-white text-indigo-500 flex items-center justify-center shadow-lg"
-          >
-            🔊
-          </motion.button>
+          {showTextInput && (
+            <div className="flex gap-2 mb-2">
+              <input
+                type="text"
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && sendTextMessage()}
+                placeholder="Type Japanese or English..."
+                className="flex-1 px-3 py-2 rounded-lg border text-sm"
+              />
+              <button onClick={sendTextMessage} className="px-3 py-2 bg-indigo-500 text-white rounded-lg text-sm">Send</button>
+            </div>
+          )}
+
+          <button onClick={endCall} className="w-full py-2 bg-red-100 text-red-500 rounded-lg text-sm">📵 End</button>
         </div>
-
-        <p className="text-center text-white/60 text-xs mt-4">
-          {isListening ? '🎤 Listening... Speak now!' : 
-           isTutorSpeaking ? '🔊 Tutor is speaking...' :
-           'Tap 🎤 to speak Japanese'}
-        </p>
       </div>
     </div>
   );

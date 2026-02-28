@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useGamificationStore, getXPForNextLevel } from '@/lib/store';
 import { conversationScenarios } from '@/lib/japanese-data';
@@ -9,10 +10,10 @@ interface HomeTabProps {
 }
 
 export default function HomeTab({ onNavigate }: HomeTabProps) {
-  const { progress } = useGamificationStore();
+  const { progress, _hasHydrated } = useGamificationStore();
   const xpForNextLevel = getXPForNextLevel(progress.level);
-  const xpProgress = progress.level < 10 
-    ? ((progress.xp % xpForNextLevel) / xpForNextLevel) * 100 
+  const xpProgress = progress.level < 10
+    ? ((progress.xp % xpForNextLevel) / xpForNextLevel) * 100
     : 100;
 
   const levelTitles = ['', 'Beginner', 'Novice', 'Apprentice', 'Intermediate', 'Advanced', 'Expert', 'Master', 'Champion', 'Legend', 'Grandmaster'];
@@ -32,12 +33,29 @@ export default function HomeTab({ onNavigate }: HomeTabProps) {
     "Don't be afraid to make mistakes - they help you learn! 💪",
   ];
 
-  const randomTip = dailyTips[Math.floor(Math.random() * dailyTips.length)];
+  // Fix hydration: use state for random tip, set after mount
+  const [randomTip, setRandomTip] = useState(dailyTips[0]);
+
+  useEffect(() => {
+    // Only randomize after component mounts on client
+    setRandomTip(dailyTips[Math.floor(Math.random() * dailyTips.length)]);
+  }, []);
+
+  // Show loading state during hydration
+  if (!_hasHydrated) {
+    return (
+      <div className="min-h-screen pb-24 pt-4 px-4 bg-gradient-to-b from-[#FFF9F0] to-[#FFE4E9]">
+        <div className="flex items-center justify-center h-[60vh]">
+          <div className="text-4xl animate-bounce">🎌</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen pb-24 pt-4 px-4 bg-gradient-to-b from-[#FFF9F0] to-[#FFE4E9]">
       {/* Welcome Header */}
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         className="text-center mb-6"
@@ -50,7 +68,7 @@ export default function HomeTab({ onNavigate }: HomeTabProps) {
       </motion.div>
 
       {/* Progress Card */}
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.1 }}
@@ -92,7 +110,7 @@ export default function HomeTab({ onNavigate }: HomeTabProps) {
             {progress.level < 10 && <span>{xpForNextLevel} XP to level up</span>}
           </div>
           <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-            <motion.div 
+            <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${xpProgress}%` }}
               transition={{ duration: 1, ease: 'easeOut' }}
@@ -103,7 +121,7 @@ export default function HomeTab({ onNavigate }: HomeTabProps) {
       </motion.div>
 
       {/* Daily Tip */}
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 0.2 }}
@@ -119,7 +137,7 @@ export default function HomeTab({ onNavigate }: HomeTabProps) {
       </motion.div>
 
       {/* Quick Actions */}
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
@@ -149,7 +167,7 @@ export default function HomeTab({ onNavigate }: HomeTabProps) {
       </motion.div>
 
       {/* Stats */}
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.5 }}
@@ -217,7 +235,7 @@ export default function HomeTab({ onNavigate }: HomeTabProps) {
       </motion.div>
 
       {/* Motivational Footer */}
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.8 }}
